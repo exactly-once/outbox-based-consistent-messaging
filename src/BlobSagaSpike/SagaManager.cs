@@ -39,6 +39,7 @@ public class SagaManager
         var sagaContainer = await sagaPersister.LoadByCorrelationId(correlationId).ConfigureAwait(false) 
                             ?? new SagaDataContainer(){Id = correlationId};
 
+
         if (!sagaContainer.OutboxState.TryGetValue(messageId, out var outboxState))
         {
             outboxState = new OutboxState
