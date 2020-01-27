@@ -32,22 +32,7 @@ class InMemorySagaPersister : ISagaPersister
         }
     }
 
-    public Task StoreClaimId(SagaDataContainer sagaContainer)
-    {
-        return Store(sagaContainer);
-    }
-
-    public Task PersistState(SagaDataContainer sagaContainer)
-    {
-        return Store(sagaContainer);
-    }
-
-    public Task MarkDispatched(SagaDataContainer sagaContainer)
-    {
-        return Store(sagaContainer);
-    }
-
-    public Task Store(SagaDataContainer sagaContainer)
+    public Task Persist(SagaDataContainer sagaContainer)
     {
         lock (storage)
         {
@@ -71,29 +56,6 @@ class InMemorySagaPersister : ISagaPersister
                 versionInfo[sagaContainer.Id] = 0;
             }
             sagaContainer.VersionInfo = versionInfo[sagaContainer.Id];
-        }
-        return Task.CompletedTask;
-    }
-
-    public Task Delete(SagaDataContainer sagaContainer)
-    {
-        lock (storage)
-        {
-            if (versionInfo.TryGetValue(sagaContainer.Id, out var version))
-            {
-                var expectedVersion = (int)sagaContainer.VersionInfo;
-                if (version != expectedVersion)
-                {
-                    throw new ConcurrencyException();
-                }
-
-                storage.Remove(sagaContainer.Id);
-                versionInfo.Remove(sagaContainer.Id);
-            }
-            else
-            {
-                throw new Exception("Object not found");
-            }
         }
         return Task.CompletedTask;
     }

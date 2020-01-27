@@ -9,13 +9,13 @@ using NServiceBus.Routing;
 using NServiceBus.Transport;
 using TransportOperation = NServiceBus.Outbox.TransportOperation;
 
-static class TransportOperationConverter
+public static class TransportOperationConverter
 {
     public static NServiceBus.Transport.TransportOperation[] Deserialize(this TransportOperation[] operations)
     {
         return operations.Select(o =>
         {
-            var message = new NServiceBus.Transport.OutgoingMessage(o.MessageId, o.Headers, o.Body);
+            var message = new OutgoingMessage(o.MessageId, o.Headers, o.Body);
             return new NServiceBus.Transport.TransportOperation(
                 message,
                 DeserializeRoutingStrategy(o.Options),

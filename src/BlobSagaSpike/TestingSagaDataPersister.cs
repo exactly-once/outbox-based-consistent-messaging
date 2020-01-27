@@ -17,41 +17,30 @@ class TestingSagaDataPersister : ISagaPersister, IInboxStore
         this.getBarrier = getBarrier;
     }
 
-    public async Task<DeduplicateResult> Deduplicate(string messageId, Guid claimId)
-    {
-        await Barrier().ConfigureAwait(false);
-        return await realInbox.Deduplicate(messageId, claimId).ConfigureAwait(false);
-    }
-
     public async Task<SagaDataContainer> LoadByCorrelationId(string correlationId)
     {
         await Barrier().ConfigureAwait(false);
         return await realPersister.LoadByCorrelationId(correlationId).ConfigureAwait(false);
     }
 
-    public async Task StoreClaimId(SagaDataContainer sagaContainer)
+    public async Task Persist(SagaDataContainer sagaContainer)
     {
         await Barrier().ConfigureAwait(false);
-        await realPersister.StoreClaimId(sagaContainer).ConfigureAwait(false);
+        await realPersister.Persist(sagaContainer).ConfigureAwait(false);
     }
 
-    public async Task PersistState(SagaDataContainer sagaContainer)
+    public async Task<bool> TryClaim(string messageId, Guid claimId)
     {
         await Barrier().ConfigureAwait(false);
-        await realPersister.PersistState(sagaContainer).ConfigureAwait(false);
+        return await realInbox.TryClaim(messageId, claimId).ConfigureAwait(false);
     }
 
-    public async Task MarkDispatched(SagaDataContainer sagaContainer)
+    public async Task<bool> IsClaimedBy(string messageId, Guid claimId)
     {
         await Barrier().ConfigureAwait(false);
-        await realPersister.MarkDispatched(sagaContainer).ConfigureAwait(false);
+        return await realInbox.IsClaimedBy(messageId, claimId).ConfigureAwait(false);
     }
 
-    public async Task Delete(SagaDataContainer sagaContainer)
-    {
-        await Barrier().ConfigureAwait(false);
-        await realPersister.Delete(sagaContainer).ConfigureAwait(false);
-    }
     Task Barrier()
     {
         var barrier = getBarrier(threadId, starting);
