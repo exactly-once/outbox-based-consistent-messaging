@@ -1,9 +1,10 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 public class SagaDataContainer : IDocument
 {
     public string Id { get; set; }
-    public Dictionary<string, string> OutboxState = new Dictionary<string, string>();
-    public object SagaData { get; set; }
     public object VersionInfo { get; set; }
+    public Guid? TransactionId { get; set; }
+    public object SagaData { get; set; }
 }

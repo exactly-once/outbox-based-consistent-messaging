@@ -3,19 +3,16 @@ using System.Threading.Tasks;
 using NServiceBus;
 using NServiceBus.Extensibility;
 using NServiceBus.Transport;
-using TransportOperation = NServiceBus.Outbox.TransportOperation;
 
 public class SagaManager : ISagaManager
 {
     ISagaPersister sagaPersister;
-    IInboxStore inboxStore;
     IOutboxStore outboxStore;
     IDispatchMessages dispatcher;
 
-    public SagaManager(ISagaPersister sagaPersister, IInboxStore inboxStore, IOutboxStore outboxStore, IDispatchMessages dispatcher)
+    public SagaManager(ISagaPersister sagaPersister, IOutboxStore outboxStore, IDispatchMessages dispatcher)
     {
         this.sagaPersister = sagaPersister;
-        this.inboxStore = inboxStore;
         this.outboxStore = outboxStore;
         this.dispatcher = dispatcher;
     }
@@ -24,56 +21,60 @@ public class SagaManager : ISagaManager
         Func<T, ContextBag, Task<(T, PendingTransportOperations)>> handlerCallback)
         where T : class, new()
     {
-        var sagaContainer = await sagaPersister.LoadByCorrelationId(correlationId).ConfigureAwait(false)
-                            ?? new SagaDataContainer { Id = correlationId };
+        var sagaState = await LoadSagaState<T>(correlationId);
 
-        TransportOperation[] outgoingMessages;
-        string outboxKey;
-        if (!sagaContainer.OutboxState.ContainsKey(messageId))
+        if (sagaState.TransactionId != null)
         {
-            var hasBeenProcessed = await inboxStore.HasBeenProcessed(messageId).ConfigureAwait(false);
-            if (hasBeenProcessed)
-            {
-                return;
-            }
+            await FinishTransaction(sagaState.TransactionId.Value, sagaState);
+        }
 
-            var sagaDataInstance = (T)sagaContainer.SagaData ?? new T();
-            var (newSagaData, pendingTransportOperations) =
+        var outboxState = await outboxStore.Get(messageId);
+
+        if (outboxState == null)
+        {
+            var transactionId = Guid.NewGuid();
+
+            var sagaDataInstance = (T)sagaState.SagaData ?? new T();
+            var (newSagaData, outputMessages) =
                 await handlerCallback(sagaDataInstance, context).ConfigureAwait(false);
 
-            outboxKey = Guid.NewGuid().ToString();
-            outgoingMessages = pendingTransportOperations.Operations.Serialize();
+            sagaState.SagaData = newSagaData;
+            sagaState.TransactionId = transactionId;
 
-            await outboxStore.Store(outboxKey, new OutboxState
+            outboxState = new OutboxState
             {
-                OutgoingMessages = outgoingMessages
-            });
+                OutgoingMessages = outputMessages.Operations.Serialize()
+            };
+            await outboxStore.Store(transactionId, messageId, outboxState);
 
-            sagaContainer.SagaData = newSagaData;
-            sagaContainer.OutboxState[messageId] = outboxKey;
+            await sagaPersister.Persist(sagaState);
 
-            await sagaPersister.Persist(sagaContainer).ConfigureAwait(false);
-        }
-        else
-        {
-            outboxKey = sagaContainer.OutboxState[messageId];
-            var outboxState = await outboxStore.Get(outboxKey).ConfigureAwait(false);
-            outgoingMessages = outboxState?.OutgoingMessages;
+            await FinishTransaction(transactionId, sagaState);
         }
 
-        if (outgoingMessages != null)
+        if (outboxState.OutgoingMessages != null)
         {
+            var messages = outboxState.OutgoingMessages.Deserialize();
+
             await dispatcher
-                .Dispatch(new TransportOperations(outgoingMessages.Deserialize()), new TransportTransaction(), context)
+                .Dispatch(new TransportOperations(messages), new TransportTransaction(), context)
                 .ConfigureAwait(false);
 
-            await outboxStore.Remove(outboxKey).ConfigureAwait(false);
+            await outboxStore.CleanMessages(messageId).ConfigureAwait(false);
         }
+    }
 
-        await inboxStore.MarkProcessed(messageId).ConfigureAwait(false);
+    async Task FinishTransaction(Guid transactionId, SagaDataContainer sagaState)
+    {
+        await outboxStore.Commit(transactionId);
 
-        sagaContainer.OutboxState.Remove(messageId);
+        sagaState.TransactionId = null;
+        await sagaPersister.Persist(sagaState);
+    }
 
-        await sagaPersister.Persist(sagaContainer).ConfigureAwait(false);
+    async Task<SagaDataContainer> LoadSagaState<T>(string correlationId) where T : class, new()
+    {
+        return await sagaPersister.LoadByCorrelationId(correlationId).ConfigureAwait(false)
+               ?? new SagaDataContainer { Id = correlationId };
     }
 }

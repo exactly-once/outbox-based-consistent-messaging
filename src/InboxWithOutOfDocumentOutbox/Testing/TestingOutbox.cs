@@ -12,21 +12,27 @@ class TestingOutbox : IOutboxStore
         this.impl = impl;
     }
 
-    public async Task<OutboxState> Get(string key)
+    public async Task<OutboxState> Get(string messageId)
     {
         await barrier("Outbox.Get").ConfigureAwait(false);
-        return await impl.Get(key).ConfigureAwait(false);
+        return await impl.Get(messageId).ConfigureAwait(false);
     }
 
-    public async Task Store(string key, OutboxState outgoingMessages)
+    public async Task CleanMessages(string messageId)
+    {
+        await barrier("Outbox.CleanMessages").ConfigureAwait(false);
+        await impl.CleanMessages(messageId).ConfigureAwait(false);
+    }
+
+    public async Task Store(Guid transactionId, string messageId, OutboxState outgoingMessages)
     {
         await barrier("Outbox.Store").ConfigureAwait(false);
-        await impl.Store(key, outgoingMessages).ConfigureAwait(false);
+        await impl.Store(transactionId, messageId, outgoingMessages).ConfigureAwait(false);
     }
 
-    public async Task Remove(string key)
+    public async Task Commit(Guid transactionId)
     {
-        await barrier("Outbox.Remove").ConfigureAwait(false);
-        await impl.Remove(key).ConfigureAwait(false);
+        await barrier("Outbox.Commit").ConfigureAwait(false);
+        await impl.Commit(transactionId).ConfigureAwait(false);
     }
 }

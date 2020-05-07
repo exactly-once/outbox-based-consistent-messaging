@@ -1,8 +1,11 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 
 public interface IOutboxStore
 {
-    Task<OutboxState> Get(string key);
-    Task Store(string key, OutboxState outgoingMessages);
-    Task Remove(string key);
+    Task<OutboxState> Get(string messageId);
+    Task CleanMessages(string messageId);
+
+    Task Store(Guid transactionId, string messageId, OutboxState outgoingMessages);
+    Task Commit(Guid transactionId);
 }
