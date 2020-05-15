@@ -2,6 +2,6 @@
 
 public interface ISagaPersister
 {
-    Task<SagaDataContainer> LoadByCorrelationId(string correlationId);
-    Task Persist(SagaDataContainer sagaContainer);
+    Task<E1Document<T>> Load<T>(string correlationId) where T : E1Content;
+    Task Persist<T>(E1Document<T> document) where T : E1Content;
 }

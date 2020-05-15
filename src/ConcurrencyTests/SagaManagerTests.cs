@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 using NServiceBus;
 using NServiceBus.Extensibility;
 using NUnit.Framework;
@@ -11,6 +12,14 @@ public class SagaManagerTests
 {
     const string SagaId = "correlationId";
     const string MessageId = "messageId";
+
+    [Test]
+    public async Task ProcessSingleMessage()
+    {
+        var manager = new CosmosDbSagaManagerFactory().Create(new FakeDispatcher());
+
+        await manager.Process<SagaData>(MessageId, SagaId, new ContextBag(), HandlerCallback);
+    }
 
     [Test]
     public async Task PerformScenarios()
@@ -30,22 +39,24 @@ public class SagaManagerTests
         var dispatcher = new FakeDispatcher();
         //var sagaManagerFactory = new BaselineSagaManagerFactory();
         //var sagaManagerFactory = new BasicInboxSagaManagerFactory();
-        var sagaManagerFactory = new InboxWithOutOfDocumentOutboxSagaManagerFactory();
+        var sagaManagerFactory = new CosmosDbSagaManagerFactory();
         
         var controller = new TestController(scenario);
 
+        /*
         var managerA = sagaManagerFactory.Create(s => controller.GetBarrier('A', s), dispatcher);
         var managerB = sagaManagerFactory.Create(s => controller.GetBarrier('B', s), dispatcher);
 
         var processA = Task.Run(() => ProcessMessage(managerA, controller));
         var processB = Task.Run(() => ProcessMessage(managerB, controller));
-
+        
         var done = Task.WhenAll(processA, processB);
         await done.ConfigureAwait(false);
+        */
 
-        var sagaData = await sagaManagerFactory.LoadSaga(SagaId);
+        var sagaData = await sagaManagerFactory.LoadSaga<SagaData>(SagaId);
 
-        Assert.AreEqual(1, ((SagaData)sagaData).Counter);
+        Assert.AreEqual(1, sagaData.Counter);
 
         
         foreach (var call in controller.CallHistory)
@@ -72,7 +83,7 @@ public class SagaManagerTests
         }
     }
 
-    async Task ProcessMessage(ISagaManager managerA, TestController testController)
+    async Task ProcessMessage(CosmosDbSagaManager managerA, TestController testController)
     {
         var completed = false;
         while (!completed)
@@ -105,7 +116,7 @@ public class SagaManagerTests
         return Task.FromResult<(SagaData, PendingTransportOperations)>((data, new PendingTransportOperations()));
     }
 
-    class SagaData
+    class SagaData : E1Content
     {
         public int Counter { get; set; }
     }

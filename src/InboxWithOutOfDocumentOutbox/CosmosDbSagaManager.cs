@@ -1,16 +1,17 @@
 ﻿using System;
 using System.Threading.Tasks;
+using InboxWithOutOfDocumentOutbox.Testing;
 using NServiceBus;
 using NServiceBus.Extensibility;
 using NServiceBus.Transport;
 
-public class SagaManager : ISagaManager
+public class CosmosDbSagaManager
 {
-    ISagaPersister sagaPersister;
-    IOutboxStore outboxStore;
+    CosmosDbSagaPersister sagaPersister;
+    CosmosDbOutbox outboxStore;
     IDispatchMessages dispatcher;
 
-    public SagaManager(ISagaPersister sagaPersister, IOutboxStore outboxStore, IDispatchMessages dispatcher)
+    public CosmosDbSagaManager(CosmosDbSagaPersister sagaPersister, CosmosDbOutbox outboxStore, IDispatchMessages dispatcher)
     {
         this.sagaPersister = sagaPersister;
         this.outboxStore = outboxStore;
@@ -19,37 +20,40 @@ public class SagaManager : ISagaManager
 
     public async Task Process<T>(string messageId, string correlationId, ContextBag context,
         Func<T, ContextBag, Task<(T, PendingTransportOperations)>> handlerCallback)
-        where T : class, new()
+        where T : E1Content, new()
     {
-        var sagaState = await LoadSagaState<T>(correlationId);
+        var state = await LoadSagaState<T>(correlationId);
 
-        if (sagaState.TransactionId != null)
+        if (state.Item.TransactionId != null)
         {
-            await FinishTransaction(sagaState.TransactionId.Value, sagaState);
+            await FinishTransaction(state.Item.TransactionId.Value, state);
         }
 
         var outboxState = await outboxStore.Get(messageId);
 
         if (outboxState == null)
         {
-            var transactionId = Guid.NewGuid();
-
-            var sagaDataInstance = (T)sagaState.SagaData ?? new T();
+            var sagaDataInstance = state.Item ?? new T();
             var (newSagaData, outputMessages) =
                 await handlerCallback(sagaDataInstance, context).ConfigureAwait(false);
 
-            sagaState.SagaData = newSagaData;
-            sagaState.TransactionId = transactionId;
+            var transactionId = Guid.NewGuid();
+
+            state.Item = newSagaData;
+            state.Item.TransactionId = transactionId;
 
             outboxState = new OutboxState
             {
+                Id = transactionId.ToString(),
+                MessageId = messageId,
                 OutgoingMessages = outputMessages.Operations.Serialize()
             };
-            await outboxStore.Store(transactionId, messageId, outboxState);
 
-            await sagaPersister.Persist(sagaState);
+            await outboxStore.Store(outboxState);
 
-            await FinishTransaction(transactionId, sagaState);
+            await sagaPersister.Persist(state);
+
+            await FinishTransaction(transactionId, state);
         }
 
         if (outboxState.OutgoingMessages != null)
@@ -64,17 +68,17 @@ public class SagaManager : ISagaManager
         }
     }
 
-    async Task FinishTransaction(Guid transactionId, SagaDataContainer sagaState)
+    async Task FinishTransaction<T>(Guid transactionId, E1Document<T> state) where T : E1Content
     {
         await outboxStore.Commit(transactionId);
 
-        sagaState.TransactionId = null;
-        await sagaPersister.Persist(sagaState);
+        state.Item.TransactionId = null;
+        await sagaPersister.Persist<T>(state);
     }
 
-    async Task<SagaDataContainer> LoadSagaState<T>(string correlationId) where T : class, new()
+    async Task<E1Document<T>> LoadSagaState<T>(string correlationId) where T : E1Content, new()
     {
-        return await sagaPersister.LoadByCorrelationId(correlationId).ConfigureAwait(false)
-               ?? new SagaDataContainer { Id = correlationId };
+        return await sagaPersister.Load<T>(correlationId).ConfigureAwait(false)
+               ?? new E1Document<T>{Item = new T { Id = correlationId}};
     }
 }

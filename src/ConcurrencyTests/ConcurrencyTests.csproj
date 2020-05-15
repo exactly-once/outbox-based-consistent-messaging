@@ -14,8 +14,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Baseline\Baseline.csproj" />
-    <ProjectReference Include="..\BasicInbox\BasicInbox.csproj" />
     <ProjectReference Include="..\InboxWithOutOfDocumentOutbox\InboxWithOutOfDocumentOutbox.csproj" />
   </ItemGroup>
 </Project>
