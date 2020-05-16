@@ -14,14 +14,6 @@ public class SagaManagerTests
     const string MessageId = "messageId";
 
     [Test]
-    public async Task ProcessSingleMessage()
-    {
-        var manager = new CosmosDbSagaManagerFactory().Create(new FakeDispatcher());
-
-        await manager.Process<SagaData>(MessageId, SagaId, new ContextBag(), HandlerCallback);
-    }
-
-    [Test]
     public async Task PerformScenarios()
     {
         var scenarios = GenerateScenarios(10).ToArray();
@@ -39,7 +31,7 @@ public class SagaManagerTests
         var dispatcher = new FakeDispatcher();
         //var sagaManagerFactory = new BaselineSagaManagerFactory();
         //var sagaManagerFactory = new BasicInboxSagaManagerFactory();
-        var sagaManagerFactory = new CosmosDbSagaManagerFactory();
+        var sagaManagerFactory = new CosmosDBSagaManagerFactory();
         
         var controller = new TestController(scenario);
 

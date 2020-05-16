@@ -3,16 +3,17 @@ using System.Threading.Tasks;
 using InboxWithOutOfDocumentOutbox.Testing;
 using NServiceBus.Transport;
 
-public class CosmosDbSagaManagerFactory 
+public class CosmosDBSagaManagerFactory 
 {
     CosmosDbSagaPersister persister;
 
-    public CosmosDbSagaManager Create(IDispatchMessages dispatcher)
+    public async Task<CosmosDbSagaManager> Create(IDispatchMessages dispatcher)
     {
         persister = new CosmosDbSagaPersister();
-        persister.Initialize().GetAwaiter().GetResult();
+        await persister.Initialize();
 
         var outbox = new CosmosDbOutbox();
+        await outbox.Initialize();
 
         return new CosmosDbSagaManager(persister, outbox, dispatcher);
     }

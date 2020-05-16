@@ -13,7 +13,7 @@ namespace ConcurrencyTests
         [Test]
         public async Task ProcessSingleMessage()
         {
-            var manager = new CosmosDbSagaManagerFactory().Create(new FakeDispatcher());
+            var manager = await new CosmosDBSagaManagerFactory().Create(new FakeDispatcher());
 
             await manager.Process<SagaData>(MessageId, SagaId, new ContextBag(), HandlerCallback);
         }

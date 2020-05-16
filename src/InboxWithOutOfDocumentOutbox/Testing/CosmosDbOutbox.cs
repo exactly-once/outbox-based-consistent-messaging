@@ -30,7 +30,7 @@ public class CosmosDbOutbox
     {
         try
         {
-            return (await container.ReadItemAsync<OutboxState>(id, new PartitionKey(id))).Resource;
+            return (await container.ReadItemAsync<OutboxState>(id, PartitionKey.None)).Resource;
         }
         catch (CosmosException e) when (e.StatusCode == HttpStatusCode.NotFound)
         {
@@ -58,7 +58,7 @@ public class CosmosDbOutbox
     {
         var response = await container.UpsertItemAsync(outboxState);
 
-        if (response.StatusCode != HttpStatusCode.OK)
+        if (response.StatusCode != HttpStatusCode.Created)
         {
             throw new Exception("Error storing outbox item");
         }
