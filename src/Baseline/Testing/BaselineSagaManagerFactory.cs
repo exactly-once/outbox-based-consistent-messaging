@@ -14,6 +14,10 @@ public class BaselineSagaManagerFactory : ISagaManagerFactory
     public async Task<object> LoadSaga(string sagaId)
     {
         var container = await persister.LoadByCorrelationId(sagaId).ConfigureAwait(false);
-        return container?.SagaData;
+        return container?.BusinessState;
+    }
+
+    public void PrepareMessage(string messageId)
+    {
     }
 }

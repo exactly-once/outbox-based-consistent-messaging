@@ -12,15 +12,16 @@ class TestingSagaDataPersister : ISagaPersister
         this.impl = impl;
     }
 
-    public async Task<Entity> LoadByCorrelationId(string correlationId)
+    public async Task<SagaDataContainer> LoadByCorrelationId(string correlationId)
     {
+        var result = await impl.LoadByCorrelationId(correlationId).ConfigureAwait(false);
         await barrier("Saga.Load").ConfigureAwait(false);
-        return await impl.LoadByCorrelationId(correlationId).ConfigureAwait(false);
+        return result;
     }
 
-    public async Task Persist(Entity sagaContainer)
+    public async Task Persist(SagaDataContainer sagaContainer)
     {
-        await barrier("Saga.Persist").ConfigureAwait(false);
         await impl.Persist(sagaContainer).ConfigureAwait(false);
+        await barrier("Saga.Persist").ConfigureAwait(false);
     }
 }

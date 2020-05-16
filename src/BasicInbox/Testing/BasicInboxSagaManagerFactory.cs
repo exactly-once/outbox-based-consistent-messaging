@@ -18,4 +18,8 @@ public class BasicInboxSagaManagerFactory : ISagaManagerFactory
         var container = await persister.LoadByCorrelationId(sagaId).ConfigureAwait(false);
         return container?.SagaData;
     }
+
+    public void PrepareMessage(string messageId)
+    {
+    }
 }

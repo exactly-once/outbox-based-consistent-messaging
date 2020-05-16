@@ -6,4 +6,5 @@ public interface ISagaManagerFactory
 {
     ISagaManager Create(Func<string, Task> barrierCallback, IDispatchMessages dispatcher);
     Task<object> LoadSaga(string sagaId);
+    void PrepareMessage(string messageId);
 }

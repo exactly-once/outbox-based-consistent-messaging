@@ -7,12 +7,12 @@ using TransportOperation = NServiceBus.Outbox.TransportOperation;
 
 public class SagaManager : ISagaManager
 {
-    ISagaPersister sagaPersister;
+    ISagaPersister persister;
     IDispatchMessages dispatcher;
 
-    public SagaManager(ISagaPersister sagaPersister, IDispatchMessages dispatcher)
+    public SagaManager(ISagaPersister persister, IDispatchMessages dispatcher)
     {
-        this.sagaPersister = sagaPersister;
+        this.persister = persister;
         this.dispatcher = dispatcher;
     }
 
@@ -20,40 +20,46 @@ public class SagaManager : ISagaManager
         Func<T, ContextBag, Task<(T, PendingTransportOperations)>> handlerCallback)
         where T : class, new()
     {
-        var sagaContainer = await sagaPersister.LoadByCorrelationId(correlationId).ConfigureAwait(false)
-                            ?? new SagaDataContainer { Id = correlationId };
+var entity = await persister.LoadByCorrelationId(correlationId).ConfigureAwait(false)
+                    ?? new Entity { Id = correlationId };
 
-        TransportOperation[] outgoingMessages;
-        if (!sagaContainer.OutboxState.ContainsKey(messageId))
-        {
-            //Message has not been processed yet
-            var sagaDataInstance = (T)sagaContainer.SagaData ?? new T();
-            var (newSagaData, pendingTransportOperations) =
-                await handlerCallback(sagaDataInstance, context).ConfigureAwait(false);
+TransportOperation[] outgoingMessages;
+if (!entity.OutboxState.ContainsKey(messageId))
+{
+    var state = (T)entity.BusinessState ?? new T();
 
-            outgoingMessages = pendingTransportOperations.Operations.Serialize();
+    var (newState, pendingTransportOperations) =
+        await handlerCallback(state, context).ConfigureAwait(false);
 
-            sagaContainer.SagaData = newSagaData;
-            sagaContainer.OutboxState[messageId] = new OutboxState
-            {
-                OutgoingMessages = outgoingMessages
-            };
+    outgoingMessages = pendingTransportOperations.Operations.Serialize();
 
-            await sagaPersister.Persist(sagaContainer).ConfigureAwait(false);
-        }
-        else
-        {
-            outgoingMessages = sagaContainer.OutboxState[messageId].OutgoingMessages;
-        }
+    entity.BusinessState = newState;
+    entity.OutboxState[messageId] = new OutboxState
+    {
+        OutgoingMessages = outgoingMessages
+    };
 
-        if (outgoingMessages != null)
-        {
-            var toDispatch = outgoingMessages.Deserialize();
-            await dispatcher.Dispatch(new TransportOperations(toDispatch), new TransportTransaction(), context).ConfigureAwait(false);
+    await persister.Persist(entity).ConfigureAwait(false);
+}
+else
+{
+    outgoingMessages = entity.OutboxState[messageId].OutgoingMessages;
+}
 
-            sagaContainer.OutboxState[messageId].OutgoingMessages = null;
+if (outgoingMessages != null)
+{
+    var toDispatch = outgoingMessages.Deserialize();
+    await Dispatch<T>(context, toDispatch).ConfigureAwait(false);
 
-            await sagaPersister.Persist(sagaContainer).ConfigureAwait(false);
-        }
+    entity.OutboxState[messageId].OutgoingMessages = null;
+
+    await persister.Persist(entity).ConfigureAwait(false);
+}
+    }
+
+    async Task Dispatch<T>(ContextBag context, NServiceBus.Transport.TransportOperation[] toDispatch) where T : class, new()
+    {
+        await dispatcher.Dispatch(new TransportOperations(toDispatch), new TransportTransaction(), context)
+            .ConfigureAwait(false);
     }
 }

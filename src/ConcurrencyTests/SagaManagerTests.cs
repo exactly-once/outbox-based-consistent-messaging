@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using NServiceBus;
 using NServiceBus.Extensibility;
+using NServiceBus.Transport;
 using NUnit.Framework;
 
 [TestFixture]
@@ -15,7 +16,8 @@ public class SagaManagerTests
     [Test]
     public async Task PerformScenarios()
     {
-        var scenarios = GenerateScenarios(10).ToArray();
+        var scenarios = GenerateScenarios(11).ToArray();
+        //var scenarios = new[] { "ABABABABABA" };
 
         foreach (var scenario in scenarios)
         {
@@ -30,24 +32,29 @@ public class SagaManagerTests
         var dispatcher = new FakeDispatcher();
         //var sagaManagerFactory = new BaselineSagaManagerFactory();
         //var sagaManagerFactory = new BasicInboxSagaManagerFactory();
-        var sagaManagerFactory = new InboxWithOutOfDocumentOutboxSagaManagerFactory();
+        //var sagaManagerFactory = new InboxWithOutOfDocumentOutboxSagaManagerFactory();
+        var sagaManagerFactory = new TokenBasedWithExternalOutboxSagaManagerFactory();
+        sagaManagerFactory.PrepareMessage(MessageId);
         
         var controller = new TestController(scenario);
 
-        var managerA = sagaManagerFactory.Create(s => controller.GetBarrier('A', s), dispatcher);
-        var managerB = sagaManagerFactory.Create(s => controller.GetBarrier('B', s), dispatcher);
+        var processes = new Dictionary<char, SagaManagerTask>
+        {
+            ['A'] = new SagaManagerTask(sagaManagerFactory, dispatcher, MessageId, SagaId, "A"),
+            ['B'] = new SagaManagerTask(sagaManagerFactory, dispatcher, MessageId, SagaId, "B")
+        };
 
-        var processA = Task.Run(() => ProcessMessage(managerA, controller));
-        var processB = Task.Run(() => ProcessMessage(managerB, controller));
-
-        var done = Task.WhenAll(processA, processB);
-        await done.ConfigureAwait(false);
+        foreach (var process in scenario)
+        {
+            await processes[process].MakeStep();
+        }
 
         var sagaData = await sagaManagerFactory.LoadSaga(SagaId);
+        if (sagaData != null)
+        {
+            Assert.AreEqual(1, ((SagaData) sagaData).Counter);
+        }
 
-        Assert.AreEqual(1, ((SagaData)sagaData).Counter);
-
-        
         foreach (var call in controller.CallHistory)
         {
             Console.WriteLine(" - " + call);
@@ -104,9 +111,85 @@ public class SagaManagerTests
         data.Counter++;
         return Task.FromResult<(SagaData, PendingTransportOperations)>((data, new PendingTransportOperations()));
     }
+}
 
-    class SagaData
+class SagaManagerTask
+{
+    ISagaManager manager;
+    string messageId;
+    string sagaId;
+    string processId;
+    Task processingTask;
+    TaskCompletionSource<bool> barrier;
+    TaskCompletionSource<string> stepComplete;
+
+    public SagaManagerTask(ISagaManagerFactory managerFactory, IDispatchMessages dispatcher, string messageId, string sagaId, string processId)
     {
-        public int Counter { get; set; }
+        this.manager = managerFactory.Create(GetBarrier, dispatcher);
+        this.messageId = messageId;
+        this.sagaId = sagaId;
+        this.processId = processId;
     }
+
+    Task GetBarrier(string arg)
+    {
+        var message = $"{processId}: {arg}";
+        var myBarrier = barrier;
+        stepComplete.SetResult(message); //Signal that this step is complete
+        return myBarrier.Task;
+    }
+
+    public async Task MakeStep()
+    {
+        if (processingTask == null)
+        {
+            barrier = new TaskCompletionSource<bool>();
+            processingTask = Task.Run(ProcessingLoop);
+        }
+
+        var oldBarrier = barrier;
+        barrier = new TaskCompletionSource<bool>();
+
+        stepComplete = new TaskCompletionSource<string>();
+        
+        oldBarrier.SetResult(true); //Allow process to move through next barrier
+
+        var message = await stepComplete.Task;
+        Console.WriteLine(message);
+    }
+
+    async Task ProcessingLoop()
+    {
+        while (true)
+        {
+            try
+            {
+                await manager.Process<SagaData>(messageId, sagaId, new ContextBag(), HandlerCallback);
+            }
+            catch (ScenarioIncompleteException e)
+            {
+                Console.WriteLine("Scenario incomplete");
+                break;
+            }
+            catch (ConcurrencyException e)
+            {
+                //Swallow and retry
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+        }
+    }
+    Task<(SagaData, PendingTransportOperations)> HandlerCallback(SagaData data, ContextBag context)
+    {
+        data.Counter++;
+        return Task.FromResult<(SagaData, PendingTransportOperations)>((data, new PendingTransportOperations()));
+    }
+}
+
+
+public class SagaData
+{
+    public int Counter { get; set; }
 }

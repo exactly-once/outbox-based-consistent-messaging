@@ -1,13 +1,13 @@
 ﻿using System.Threading.Tasks;
 
-class InMemorySagaPersister : ConsistentInMemoryStore<SagaDataContainer>, ISagaPersister
+class InMemorySagaPersister : ConsistentInMemoryStore<Entity>, ISagaPersister
 {
-    public Task<SagaDataContainer> LoadByCorrelationId(string correlationId)
+    public Task<Entity> LoadByCorrelationId(string correlationId)
     {
         return Get(correlationId);
     }
 
-    public Task Persist(SagaDataContainer sagaContainer)
+    public Task Persist(Entity sagaContainer)
     {
         return Put(sagaContainer);
     }
